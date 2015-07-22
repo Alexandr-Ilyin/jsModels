@@ -248,10 +248,12 @@ var ListProto = _.extend({}, ModelBase.prototype, {
         this.isDirty[item.__position] = true;
     },
     push : function(item) {
-        item = this.wrap(item);
-        var newLength = Array.prototype.push.call(this, item);
-        item.__position = newLength-1;
-        return newLength;
+        return this.__updateFunc(function(){
+            item = this.wrap(item);
+            var newLength = Array.prototype.push.call(this, item);
+            item.__position = newLength-1;
+            return newLength;
+        }, arguments, true);
     },
 
     __triggerItemChange : function(index) {
@@ -268,33 +270,40 @@ var ListProto = _.extend({}, ModelBase.prototype, {
         var result = Array.prototype.pop.apply(this, arguments);
         return result;
     },
+
     reverse : function(){
-        Array.prototype.reverse.call(this);
-        this.updateItems();
+        return this.__updateFunc(function() {
+            return  Array.prototype.reverse.apply(this, arguments);
+        }, arguments, true);
     },
+
     shift : function(){
-        var result = Array.prototype.shift.apply(this, arguments);
-        this.updateItems();
-        return result;
+        return this.__updateFunc(function() {
+            return  Array.prototype.shift.apply(this, arguments);
+        }, arguments, true);
+
     },
     slice : function(){
-        var result = Array.prototype.slice.apply(this, arguments);
+        var result = Array.prototype.slice.apply(this, args);
         return result;
     },
+
     sort : function(){
-        var result = Array.prototype.sort.apply(this, arguments);
-        this.updateItems();
-        return result;
+        return this.__updateFunc(function() {
+            return  Array.prototype.sort.apply(this, arguments);
+        }, arguments, true);
     },
+
     splice : function(){
-        var result = Array.prototype.splice.apply(this, arguments);
-        this.updateItems();
-        return result;
+        return this.__updateFunc(function() {
+            return  Array.prototype.splice.apply(this, arguments);
+        }, arguments, true);
     },
+
     unshift : function(){
-        var result = Array.prototype.unshift.apply(this, arguments);
-        this.updateItems();
-        return result;
+        return this.__updateFunc(function() {
+            return Array.prototype.unshift.apply(this, arguments);
+        }, arguments, true);
     },
 
     updateItems : function(){
@@ -304,15 +313,23 @@ var ListProto = _.extend({}, ModelBase.prototype, {
         }
     },
 
-    __update : function(items){
+    __updateFunc : function(func, args, update) {
         this.begin();
-        var args = items.concat([]);
-        args.unshift(0, this.length);
-        this.splice.apply(this, args);
-        this.updateItems();
+        var result = func.apply(this, args);
+        if (update)
+            this.updateItems();
         this.trigger("change", this);
         this.____changed = true;
         this.end();
+        return result;
+    },
+
+    __update : function(items){
+        this.__updateFunc(function(){
+            var args = items.concat([]);
+            args.unshift(0, this.length);
+            this.splice.apply(this, args);
+        });
     },
 
     __triggerChanged : function(){

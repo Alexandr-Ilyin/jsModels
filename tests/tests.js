@@ -2,6 +2,17 @@
 var assert = require("assert");
 var m = require("../public/jsModels");
 
+test('array spilce trigger onchange event', function() {
+    var Address = m.define({         street : m.field(),         house : m.field()     });
+    var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
+    var p = new Person({addressList : [{street:"MyStreet", house :"H1"}]});
+
+    var log = "";
+    p.onChange("addressList", function(){ log+= " addressList changed"});
+    p.addressList().splice(0,1);
+    assert.equal(log," addressList changed")
+});
+
 test('array setter should update items correctly', function() {
     var Address = m.define({         street : m.field(),         house : m.field()     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
@@ -23,7 +34,7 @@ test('child array should survive setter', function(){
     assert.equal(a1,a2);
 });
 
-test('child object should survive setter', function(){ 
+test('child object should survive setter', function(){
     var Address = m.define({         street : m.field(),         house : m.field()     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        address : m.obj(Address)    });
     var p = new Person({address : {street:"MyStreet", house :"H1"}});
