@@ -2,6 +2,45 @@
 var assert = require("assert");
 var m = require("../public/jsModels");
 
+test('dependent props should be supported for nested objects', function() {
+    var Item = m.define({ num : $m.field()});
+
+    var Rect = m.define({
+        width : m.field().defaultValue(0),
+        height : m.field().defaultValue(0),
+        area : m.field().getter(function(){
+            return this.width() * this.height();
+        }).dep("width","height")
+    });
+    var r = new Rect();
+    assert.equal(r.area(),0);
+    r.update({height:2, width : 5});
+    assert.equal(r.area(),10);
+});
+
+test('dependent props should be supported for simple fields', function() {
+    var Rect = m.define({
+        width : m.field().defaultValue(0),
+        height : m.field().defaultValue(0),
+        area : m.field().getter(function(){
+            return this.width() * this.height();
+        }).dep("width","height")
+    });
+    var r = new Rect();
+    assert.equal(r.area(),0);
+    r.update({height:2, width : 5});
+    assert.equal(r.area(),10);
+});
+
+test('defaults should be supported.', function() {
+    var Rect = m.define({
+        width : m.field().defaultValue(0),
+        height : m.field().defaultValue(0)
+    });
+    var r = new Rect();
+    assert.equal(r.width(),0);
+});
+
 test(' JsonField names should be supported in constructor', function() {
     var Address = m.define({         street : m.field(),         house : m.field().jsonField("HOUSE")     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
@@ -16,7 +55,6 @@ test('to json should return json with JsonField names', function() {
     assert.deepEqual(        p.toJson(),
         {addressList : [{street:"MyStreet", "HOUSE": "H1"}]});
 });
-
 
 test('to json should return json with default values', function() {
     var Address = m.define({         street : m.field(),         house : m.field().defaultValue("H1")     });
@@ -34,7 +72,6 @@ test('to json should return json', function() {
         {addressList : [{street:"MyStreet", house :"H1"}]});
 
 });
-
 
 test('array spilce trigger onchange event', function() {
     var Address = m.define({         street : m.field(),         house : m.field()     });
@@ -68,7 +105,7 @@ test('child array should survive setter', function(){
     assert.equal(a1,a2);
 });
 
-test('child object should survive setter', function(){
+test('child object should survive setter.', function(){
     var Address = m.define({         street : m.field(),         house : m.field()     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        address : m.obj(Address)    });
     var p = new Person({address : {street:"MyStreet", house :"H1"}});

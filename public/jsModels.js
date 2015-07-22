@@ -116,14 +116,14 @@ var EntityBase = ModelBase.extend({
     __getSimpleVal : function(propMeta){
         var prop = propMeta.jsonName;
 
-        if (propMeta.getter){
-            if (this.isDirty[prop] ){
+        if (propMeta._getter) {
+            if (this.isDirty[prop] || this.data[prop]===undefined ){
                 delete this.isDirty[prop];
-                this.data[prop] = propMeta.getter();
+                this.data[prop] = propMeta._getter.call(this);
             }
             return this.data[prop];
         }
-        else if (propMeta._defaultValue) {
+        else if (propMeta._defaultValue!==undefined) {
             if (this.data[prop]==undefined)
                 return propMeta._defaultValue;
         }
@@ -134,8 +134,9 @@ var EntityBase = ModelBase.extend({
         this.begin();
         var prop = propMeta.jsonName;
         val = propMeta.setter ? propMeta.setter(val) : val;
-        this.__markDirty(prop);
+
         if (this.data[prop]!==val) {
+            this.__markDirty(propMeta);
             this.data[prop] = val;
             this.__triggerOnChange(propMeta, val);
             this.__markChanged(propMeta);
@@ -195,6 +196,12 @@ var EntityBase = ModelBase.extend({
         this.end();
     },
 
+    update : function(newVals) {
+        this.begin();
+        this.__update(newVals);
+        this.end();
+    },
+
     __update : function(newVals){
 
         for (var field in newVals) {
@@ -213,13 +220,14 @@ var EntityBase = ModelBase.extend({
     },
 
     __markDirty : function(propMeta){
-        this.isDirty[propMeta.jsonName] = true;
-        for (var p in propMeta.dependencyNames) {
+        var propName = propMeta.propName;
+        this.isDirty[propName] = true;
+        for (var p in propMeta._mustUpdate) {
             this.isDirty[p] = true;
         }
         if (this.parent){
             if (this.parent.__markDirty)
-                this.parent.__markDirty(propMeta);
+                this.parent.__markDirty(this.__parentField);
             else  if (this.parent.__itemDirty)
                 this.parent.__itemDirty(this);
         }
@@ -380,9 +388,22 @@ var ListProto = _.extend({}, ModelBase.prototype, {
 
 
 var FieldDefinition = Base.extend({
+    constructor : function(cfg){
+        this.base(cfg);
+        this.onChangeHandlers = [];
+        this._dep = [];
+        this._mustUpdate = [];
+    },
     onChange : function(handler){
-        this.onChangeHandlers = this.onChangeHandlers|| [];
         this.onChangeHandlers.push(handler);
+        return this;
+    },
+    dep : function(){
+        this._dep = this._dep.concat(_.toArray(arguments));
+        return this;
+    },
+    getter : function(func){
+        this._getter = func;
         return this;
     },
     jsonField : function(x) {
@@ -464,6 +485,12 @@ module.exports = {
             }
             jsonToFuncs[propMeta.jsonName] = newPrototype[propName];
         });
+
+        for (var propName in propsMeta) {
+            _.forEach(propsMeta[propName]._dep, function(dep){
+                propsMeta[dep]._mustUpdate.push(propName);
+            })
+        }
         newPrototype.propsMeta = propsMeta;
         newPrototype.funcFor = function(x){
             return jsonToFuncs[x];
