@@ -2,21 +2,28 @@
 var assert = require("assert");
 var m = require("../public/jsModels");
 
-test('dependent props should be supported for nested objects', function() {
-    var Item = m.define({ num : $m.field()});
+test('dependent props chaining should be supported', function() {
 
-    var Rect = m.define({
+    var Cube = m.define({
         width : m.field().defaultValue(0),
         height : m.field().defaultValue(0),
         area : m.field().getter(function(){
             return this.width() * this.height();
-        }).dep("width","height")
+        }).dep("width","height"),
+
+        length : m.field().defaultValue(0),
+        volume : m.field().getter(function(){
+            return this.length() * this.area();
+        }).dep("length","area")
     });
-    var r = new Rect();
-    assert.equal(r.area(),0);
-    r.update({height:2, width : 5});
-    assert.equal(r.area(),10);
+    var r = new Cube();
+    assert.equal(r.volume(),0);
+    r.setFields({length:8});
+    r.setFields({height:2, width : 5});
+
+    assert.equal(r.volume(),80);
 });
+
 
 test('dependent props should be supported for simple fields', function() {
     var Rect = m.define({

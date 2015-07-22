@@ -3,6 +3,11 @@ var Base = require("./base");
 
 var Observable = Base.extend({
 	_ensureEvents : function () { this._events = this._events || new EventList();},
+	hasListener : function(event){
+		if (!this._events)
+			return false;
+		return this._events.hasListener(event);
+	},
 	on: function () { this._ensureEvents(); this._events.addHandler.apply(this._events, arguments); return this; },
 	once: function () { this._ensureEvents(); this._events.addOnceHandler.apply(this._events, arguments); return this; },
 	un: function () { this._ensureEvents(); this._events.removeHandler.apply(this._events, arguments); return this; },

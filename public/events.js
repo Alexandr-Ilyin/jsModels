@@ -17,6 +17,9 @@ EventList.prototype = {
 
 		this._tryTriggerImmediately(eventName, handler, scope);
 	},
+	hasListener : function(eventName){
+		return this._eventHandlers[eventName] && this._eventHandlers[eventName].length;
+	},
 
 	addOnceHandler: function (eventName, handler, scope) {
 		if (!eventName) throw "eventName is undefined";

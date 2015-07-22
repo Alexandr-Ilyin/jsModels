@@ -202,6 +202,16 @@ var EntityBase = ModelBase.extend({
         this.end();
     },
 
+    setFields : function(newVals){
+        this.begin();
+        for (var field in newVals) {
+            var func = this.funcFor(field);
+            if (func)
+                func.call(this, newVals[field]);
+        }
+        this.end();
+    },
+
     __update : function(newVals){
 
         for (var field in newVals) {
@@ -222,8 +232,9 @@ var EntityBase = ModelBase.extend({
     __markDirty : function(propMeta){
         var propName = propMeta.propName;
         this.isDirty[propName] = true;
-        for (var p in propMeta._mustUpdate) {
-            this.isDirty[p] = true;
+        for (var i = 0; i < propMeta._mustUpdate.length; i++) {
+            var updatedProp = propMeta._mustUpdate[i];
+            this.isDirty[updatedProp] = true;
         }
         if (this.parent){
             if (this.parent.__markDirty)
@@ -241,21 +252,32 @@ var EntityBase = ModelBase.extend({
 
     __markChanged : function(propMeta){
         this.isChanged[propMeta.propName] = true;
-        //for (var p in propMeta.dependencyNames) {
-        //    this.isChanged[p] = true;
-        //}
+        for (var i = 0; i < propMeta._mustUpdate.length; i++) {
+            var pName = propMeta._mustUpdate[i];
+            this.isChanged[pName] = true;
+        }
         this.____changed = true;
     },
 
     __triggerChanged : function(){
 
         for (var prop in this.isChanged) {
-            var newVal = this[prop].call(this);
-            this.trigger("changed_" + prop, newVal);
-            this.trigger("changed");
+            var event = "changed_" + prop;
 
-            if (newVal && newVal.__triggerChanged)
-                newVal.__triggerChanged.call(newVal);
+            if (this.children[prop]){
+                var newVal = this[prop].call(this);
+                this.trigger(event, newVal);
+                this.trigger("changed");
+                if (newVal && newVal.__triggerChanged)
+                    newVal.__triggerChanged.call(newVal);
+            }
+            else {
+                if (this.hasListener(event)) {
+                    var newVal = this[prop].call(this);
+                    this.trigger(event, newVal);
+                }
+                this.trigger("changed");
+            }
         }
         this.isChanged = {};
     },
@@ -487,9 +509,20 @@ module.exports = {
         });
 
         for (var propName in propsMeta) {
-            _.forEach(propsMeta[propName]._dep, function(dep){
-                propsMeta[dep]._mustUpdate.push(propName);
-            })
+            var visited = {};
+            var initial = propName;
+            var addDeps = function(pName) {
+                if (visited[pName])
+                    return;
+                visited[pName] = true;
+                _.forEach(propsMeta[pName]._dep, function (dep) {
+                    if (dep==initial)
+                        return;
+                    propsMeta[dep]._mustUpdate.push(initial);
+                    addDeps(dep);
+                });
+            }
+            addDeps(propName);
         }
         newPrototype.propsMeta = propsMeta;
         newPrototype.funcFor = function(x){
