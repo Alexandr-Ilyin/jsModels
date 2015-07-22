@@ -98,18 +98,41 @@ var EntityBase = ModelBase.extend({
         this.___init();
     },
 
+    toJson : function(){
+        var result = {};
+        _.forEach()
+        for (var pName in this.propsMeta) {
+            var propMeta = this.propsMeta[pName];
+            var name = propMeta.propName;
+            var val = this[name]();
+            if (val && val.toJson)
+                val = val.toJson();
+            if (val!==undefined && val!==null)
+                result[propMeta.jsonName] = val;
+        }
+        return result;
+    },
+
     __getSimpleVal : function(propMeta){
-        var prop = propMeta.propName;
-        if (this.isDirty[prop] && propMeta.getter){
-            delete this.isDirty[prop];
-            this.data[prop] = propMeta.getter();
+        var prop = propMeta.jsonName;
+
+        if (propMeta.getter){
+            if (this.isDirty[prop] ){
+                delete this.isDirty[prop];
+                this.data[prop] = propMeta.getter();
+            }
+            return this.data[prop];
+        }
+        else if (propMeta._defaultValue) {
+            if (this.data[prop]==undefined)
+                return propMeta._defaultValue;
         }
         return this.data[prop];
     },
 
     __setSimpleVal : function(propMeta, val){
         this.begin();
-        var prop = propMeta.propName;
+        var prop = propMeta.jsonName;
         val = propMeta.setter ? propMeta.setter(val) : val;
         this.__markDirty(prop);
         if (this.data[prop]!==val) {
@@ -122,14 +145,13 @@ var EntityBase = ModelBase.extend({
 
     __setListVal : function(propMeta, newArr) {
         this.begin();
-        var propName = propMeta.propName;
         var list = this.__getListVal(propMeta);
         list.__update(newArr);
         this.end();
     },
 
     __getListVal : function(propMeta) {
-        var propName = propMeta.propName;
+        var propName = propMeta.jsonName;
         var child = this.children[propName];
         if (!child){
             var childData = this.data[propName];
@@ -151,7 +173,7 @@ var EntityBase = ModelBase.extend({
     },
 
     __getObjVal : function(propMeta){
-        var propName = propMeta.propName;
+        var propName = propMeta.jsonName;
         var child = this.children[propName];
         if (!child){
             var childData = this.data[propName];
@@ -168,7 +190,6 @@ var EntityBase = ModelBase.extend({
 
     __setObjVal : function(propMeta, newVals){
         this.begin();
-        var propName = propMeta.propName;
         var child = this.__getObjVal(propMeta);
         child.__update(newVals);
         this.end();
@@ -177,14 +198,14 @@ var EntityBase = ModelBase.extend({
     __update : function(newVals){
 
         for (var field in newVals) {
-            var func = this[field];
+            var func = this.funcFor(field);
             if (func)
                 func.call(this, newVals[field]);
         }
         for (var d in this.data) {
             if (newVals[d]===undefined)
             {
-                var func = this[d];
+                var func = this.funcFor(d);
                 if (func)
                     func.call(this, null);
             }
@@ -192,7 +213,7 @@ var EntityBase = ModelBase.extend({
     },
 
     __markDirty : function(propMeta){
-        this.isDirty[propMeta.propName] = true;
+        this.isDirty[propMeta.jsonName] = true;
         for (var p in propMeta.dependencyNames) {
             this.isDirty[p] = true;
         }
@@ -212,13 +233,14 @@ var EntityBase = ModelBase.extend({
 
     __markChanged : function(propMeta){
         this.isChanged[propMeta.propName] = true;
-        for (var p in propMeta.dependencyNames) {
-            this.isChanged[p] = true;
-        }
+        //for (var p in propMeta.dependencyNames) {
+        //    this.isChanged[p] = true;
+        //}
         this.____changed = true;
     },
 
     __triggerChanged : function(){
+
         for (var prop in this.isChanged) {
             var newVal = this[prop].call(this);
             this.trigger("changed_" + prop, newVal);
@@ -244,9 +266,20 @@ var ListProto = _.extend({}, ModelBase.prototype, {
             throw "Item is laready in use";
         return wrap;
     },
+
+    toJson : function(){
+        return _.map(this, function(x){return x.toJson()});
+    },
+
     __itemDirty : function(item){
         this.isDirty[item.__position] = true;
     },
+
+    get : function(i)
+    {
+        return this[i];
+    },
+
     push : function(item) {
         return this.__updateFunc(function(){
             item = this.wrap(item);
@@ -351,20 +384,27 @@ var FieldDefinition = Base.extend({
         this.onChangeHandlers = this.onChangeHandlers|| [];
         this.onChangeHandlers.push(handler);
         return this;
+    },
+    jsonField : function(x) {
+        this._jsonField = x;
+        return this;
+    },
+    defaultValue : function(x){
+        this._defaultValue = x;
+        return this;
     }
 });
 
 var EntityMeta = Base.extend({
     constructor : function(cfg){
         this.base(cfg);
-        this.dependencyNames = {};
-        this.setters = {};
     }
 });
 
 var PropMeta = Base.extend({
     constructor : function(def){
         this.base(def);
+        this.jsonName = def._jsonField || def.propName;
     },
     tiggerOnChange : function(context, newVal){
         if (this.onChangeHandlers)
@@ -387,13 +427,15 @@ module.exports = {
     },
 
     define : function(cfg){
-        var meta = new EntityMeta(cfg);
+        var entityMeta = new EntityMeta(cfg);
         var propsMeta = {};
         var newPrototype = {};
+        var jsonToFuncs = {};
+
         _.forEach(cfg, function(x,propName){
             var fieldDef = cfg[propName];
+            fieldDef.propName = propName;
             var propMeta = new PropMeta(fieldDef);
-            propMeta.propName = propName;
             propsMeta[propName] = propMeta;
 
             if (fieldDef.itemType) {
@@ -420,8 +462,12 @@ module.exports = {
                         return this.__getSimpleVal(propMeta);
                 }
             }
+            jsonToFuncs[propMeta.jsonName] = newPrototype[propName];
         });
         newPrototype.propsMeta = propsMeta;
+        newPrototype.funcFor = function(x){
+            return jsonToFuncs[x];
+        };
         var proto = EntityBase.extend(newPrototype);
         return proto;
     }

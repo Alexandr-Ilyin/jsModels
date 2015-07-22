@@ -2,6 +2,40 @@
 var assert = require("assert");
 var m = require("../public/jsModels");
 
+test(' JsonField names should be supported in constructor', function() {
+    var Address = m.define({         street : m.field(),         house : m.field().jsonField("HOUSE")     });
+    var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
+    var p = new Person({addressList : [{street:"MyStreet","HOUSE" : "hhh"}]});
+    assert.equal(p.addressList().get(0).house(),"hhh");
+});
+
+test('to json should return json with JsonField names', function() {
+    var Address = m.define({         street : m.field(),         house : m.field().jsonField("HOUSE").defaultValue("H1")     });
+    var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
+    var p = new Person({addressList : [{street:"MyStreet"}]});
+    assert.deepEqual(        p.toJson(),
+        {addressList : [{street:"MyStreet", "HOUSE": "H1"}]});
+});
+
+
+test('to json should return json with default values', function() {
+    var Address = m.define({         street : m.field(),         house : m.field().defaultValue("H1")     });
+    var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
+    var p = new Person({addressList : [{street:"MyStreet"}]});
+    assert.deepEqual(        p.toJson(),
+        {addressList : [{street:"MyStreet", "house": "H1"}]});
+});
+
+test('to json should return json', function() {
+    var Address = m.define({         street : m.field(),         house : m.field()     });
+    var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
+    var p = new Person({addressList : [{street:"MyStreet", house :"H1"}]});
+    assert.deepEqual(        p.toJson(),
+        {addressList : [{street:"MyStreet", house :"H1"}]});
+
+});
+
+
 test('array spilce trigger onchange event', function() {
     var Address = m.define({         street : m.field(),         house : m.field()     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
@@ -315,7 +349,7 @@ test('nested objects should cache.', function() {
     assert.equal(p.address(), p.address());
 });
 
-test('onChanged should reset after __t', function() {
+test('onChanged should reset after transaction.', function() {
     var Person = m.define({
         name : m.field(),
         lastName : m.field()
@@ -384,7 +418,7 @@ test('should support instance onChange events', function(){
 
 });
 
-test('should support instance onChange events', function(){
+test('should support instance onChange events.', function(){
     var Person = m.define({
         name : m.field(),
         lastName : m.field()
