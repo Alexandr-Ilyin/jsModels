@@ -34,7 +34,42 @@ var ModelBase = Observable.extend({
         this.key= genKey();
         this.isDirty = {};
         this.isChanged = {};
+        this.errors = {};
         this.__t = 0;
+    },
+
+
+
+    getErrors : function(prop, deep){
+        var result = {};
+        var props = prop ? [prop] : this.__propNames;
+        for (var i = 0; i < props.length; i++) {
+            var propName = props[i];
+            var errors = [];
+            var propErrors = this.errors[propName];
+            if (propErrors==undefined){
+                this.errors[propName] = propErrors = {};
+
+                var validators = this.propsMeta[propName]._validators;
+                for (var j = 0; j < validators.length; j++) {
+                    var value = this[propName]();
+                    var error = validators[j].call(this, value);
+                    if (error){
+                        this.setError(propName, error);
+                    }
+                }
+            }
+            for(var p in  propErrors)
+                errors.push(propErrors[p]);
+            result[propName] = errors;
+        }
+        return result;
+    },
+
+    setError : function(prop, msg, code){
+        code = code || 'default';
+        this.errors[prop] = this.errors[prop] || {};
+        this.errors[prop][code] = {msg:msg, code:code};
     },
 
     onChange : function(prop, handler){
@@ -145,10 +180,8 @@ var EntityBase = ModelBase.extend({
     },
 
     __setListVal : function(propMeta, newArr) {
-        this.begin();
         var list = this.__getListVal(propMeta);
         list.__update(newArr);
-        this.end();
     },
 
     __getListVal : function(propMeta) {
@@ -232,10 +265,11 @@ var EntityBase = ModelBase.extend({
     __markDirty : function(propMeta){
         var propName = propMeta.propName;
         this.isDirty[propName] = true;
-        for (var i = 0; i < propMeta._mustUpdate.length; i++) {
+        for (var i = 0, len=propMeta._mustUpdate.length; i < len; i++) {
             var updatedProp = propMeta._mustUpdate[i];
             this.isDirty[updatedProp] = true;
         }
+        delete this.errors[propName];
         if (this.parent){
             if (this.parent.__markDirty)
                 this.parent.__markDirty(this.__parentField);
@@ -381,7 +415,13 @@ var ListProto = _.extend({}, ModelBase.prototype, {
         var result = func.apply(this, args);
         if (update)
             this.updateItems();
+
+        if (this.parent) {
+            this.parent.__markDirty(this.__parentField);
+        }
+
         this.trigger("change", this);
+
         this.____changed = true;
         this.end();
         return result;
@@ -391,8 +431,8 @@ var ListProto = _.extend({}, ModelBase.prototype, {
         this.__updateFunc(function(){
             var args = items.concat([]);
             args.unshift(0, this.length);
-            this.splice.apply(this, args);
-        });
+            Array.prototype.splice.apply(this, args);
+        }, arguments, true);
     },
 
     __triggerChanged : function(){
@@ -410,12 +450,20 @@ var ListProto = _.extend({}, ModelBase.prototype, {
 
 
 var FieldDefinition = Base.extend({
+
     constructor : function(cfg){
         this.base(cfg);
         this.onChangeHandlers = [];
         this._dep = [];
         this._mustUpdate = [];
+        this._validators = [];
     },
+
+    validate : function(func){
+        this._validators.push(func);
+        return this;
+    },
+
     onChange : function(handler){
         this.onChangeHandlers.push(handler);
         return this;
@@ -524,6 +572,7 @@ module.exports = {
             }
             addDeps(propName);
         }
+        newPrototype.__propNames = _.keys(propsMeta);
         newPrototype.propsMeta = propsMeta;
         newPrototype.funcFor = function(x){
             return jsonToFuncs[x];

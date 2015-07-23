@@ -2,6 +2,66 @@
 var assert = require("assert");
 var m = require("../public/jsModels");
 
+test('getError should return errors if validator failed', function() {
+    var Person = m.define({
+        name : m.field().validate(function(v){
+            if (v)
+                return null;
+            return "Missing";
+        })
+    });
+    var p = new Person();
+    p.name("a");
+    assert.deepEqual(p.getErrors(), {name : []});
+    p.name(null);
+    assert.deepEqual(p.getErrors(), {        name : [{msg:"Missing", code:"default"}]    });
+});
+
+test('custom errors should vanish when field updated', function() {
+    var Person = m.define({
+        name : m.field()
+    });
+    var p = new Person();
+    p.setError("name","name is invalid");
+    p.name("a");
+    assert.deepEqual(p.getErrors(), {
+        name : []
+    });
+});
+
+test('custom validation should be supported', function() {
+    var Person = m.define({
+        name : m.field()
+    });
+    var p = new Person();
+    p.setError("name","name is invalid");
+    assert.deepEqual(p.getErrors(), {        name : [{msg:"name is invalid", code:"default"}]    });
+});
+
+test('nested prop deps should be supported', function() {
+    var Row = m.define({
+        sum : m.field().defaultValue(0)
+    });
+    var Doc = m.define({
+        rows : m.list(Row),
+        total : m.field().getter(function(x){
+            var s = 0;
+            for (var i = 0; i < this.rows().length; i++) {
+               s += this.rows()[i].sum();
+            }
+            return s;
+        }).dep("rows")
+    });
+    m.begin();
+    var r = new Doc();
+    r.rows().push({sum:5});
+    r.rows().push({sum:5});
+    assert.equal(r.total(),10);
+    r.rows().push({sum:5});
+    assert.equal(r.total(),15);
+    m.end();
+});
+
 test('dependent props chaining should be supported', function() {
 
     var Cube = m.define({
@@ -142,7 +202,7 @@ test('can pass deep json to object constructor', function(){
     assert.equal(p.address().house(),"H1");
 });
 
-test('if list passed to setter then onChange triggered', function(){
+test('if list passed to setter then onChange triggered.', function(){
     var Address = m.define({         street : m.field(),         house : m.field()     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
     var p = new Person({addressList : [{street:"MyStreet", house :"H1"}]});
@@ -158,7 +218,7 @@ test('if list passed to setter then onChange triggered', function(){
 
 
 
-test('can pass json to list setter', function(){
+test('can pass json to list setter.', function(){
     var Address = m.define({         street : m.field(),         house : m.field()     });
     var Person = m.define({         name : m.field(),         lastName : m.field(),        addressList : m.list(Address)    });
     var p = new Person({addressList : [{street:"MyStreet", house :"H1"}]});
