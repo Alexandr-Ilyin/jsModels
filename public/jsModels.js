@@ -26,6 +26,13 @@ var endTransaction = function(){
     }
     GlobalChanges = {};
 };
+var isEmpty = function(json){
+    for (var x in json) {
+        if (json.hasOwnProperty(x))
+            return false;
+    }
+    return true;
+}
 
 var ModelBase = Observable.extend({
     __isModel : true,
@@ -36,40 +43,6 @@ var ModelBase = Observable.extend({
         this.isChanged = {};
         this.errors = {};
         this.__t = 0;
-    },
-
-
-
-    getErrors : function(prop, deep){
-        var result = {};
-        var props = prop ? [prop] : this.__propNames;
-        for (var i = 0; i < props.length; i++) {
-            var propName = props[i];
-            var errors = [];
-            var propErrors = this.errors[propName];
-            if (propErrors==undefined){
-                this.errors[propName] = propErrors = {};
-
-                var validators = this.propsMeta[propName]._validators;
-                for (var j = 0; j < validators.length; j++) {
-                    var value = this[propName]();
-                    var error = validators[j].call(this, value);
-                    if (error){
-                        this.setError(propName, error);
-                    }
-                }
-            }
-            for(var p in  propErrors)
-                errors.push(propErrors[p]);
-            result[propName] = errors;
-        }
-        return result;
-    },
-
-    setError : function(prop, msg, code){
-        code = code || 'default';
-        this.errors[prop] = this.errors[prop] || {};
-        this.errors[prop][code] = {msg:msg, code:code};
     },
 
     onChange : function(prop, handler){
@@ -146,6 +119,57 @@ var EntityBase = ModelBase.extend({
                 result[propMeta.jsonName] = val;
         }
         return result;
+    },
+
+    getErrors : function(prop, deep){
+        var result = {};
+        if (deep===undefined)
+            deep = true;
+        var props = prop ? [prop] : this.__propNames;
+        for (var i = 0; i < props.length; i++) {
+            var propName = props[i];
+            var propsMeta = this.propsMeta[propName];
+
+            var errors = [];
+            var propErrors = this.errors[propName];
+            if (propErrors==undefined){
+                this.errors[propName] = propErrors = {};
+
+                var validators = propsMeta._validators;
+                for (var j = 0; j < validators.length; j++) {
+                    var value = this[propName]();
+                    var error = validators[j].call(this, value);
+                    if (error){
+                        this.setError(propName, error);
+                    }
+                }
+            }
+            if (deep) {
+                if (propsMeta.entityType) {
+                    var nested = this.__getObjVal(propsMeta);
+                    var nestedErrors = nested.getErrors(null, true);
+                    if (!isEmpty(nestedErrors))
+                        errors.childErrors = nestedErrors;
+                }
+                if (propsMeta.itemType) {
+                    var array = this.__getListVal(propsMeta);
+                    var nestedErrors = array.getErrors(null, true);
+                    if (!isEmpty(nestedErrors))
+                        errors.childErrors = nestedErrors;
+                }
+            }
+            for(var p in  propErrors)
+                errors.push(propErrors[p]);
+            if (errors.length || errors.childErrors)
+                result[propName] = errors;
+        }
+        return result;
+    },
+
+    setError : function(prop, msg, code){
+        code = code || 'default';
+        this.errors[prop] = this.errors[prop] || {};
+        this.errors[prop][code] = {msg:msg, code:code};
     },
 
     __getSimpleVal : function(propMeta){
@@ -443,7 +467,24 @@ var ListProto = _.extend({}, ModelBase.prototype, {
         }
         this.trigger("changed");
         this.isChanged = {};
-    }
+    },
+
+    getErrors : function(){
+        var result = {};
+        for (var i = 0; i < this.length; i++) {
+            var item = this[i];
+            var nestedErrors = item.getErrors(null, true);
+            if (!isEmpty(nestedErrors))
+                result[i] = nestedErrors;
+        }
+        return result;
+    },
+
+    setError : function(prop, msg, code){
+        code = code || 'default';
+        this.errors[prop] = this.errors[prop] || {};
+        this.errors[prop][code] = {msg:msg, code:code};
+    },
 });
 
 

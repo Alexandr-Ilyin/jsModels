@@ -2,6 +2,46 @@
 var assert = require("assert");
 var m = require("../public/jsModels");
 
+
+test('getError should return errors if nested list item failed', function() {
+    var Address = m.define({
+        street : m.field().validate(function(v){
+            if (v)
+                return null;
+            return "Missing";
+        }),
+        house : m.field().jsonField("HOUSE")
+    });
+    var Person = m.define({
+        addressList : m.list(Address)
+    });
+
+    var p = new Person({addressList:[{}]});
+    var errors = p.getErrors();
+    assert.deepEqual(errors.addressList.childErrors, {0:{street:[{msg:"Missing", code:"default"}]}});
+    p.addressList().get(0).street("S");
+    assert.deepEqual(p.getErrors(), {});
+});
+
+test('getError should return errors if nested object failed', function() {
+    var Address = m.define({
+        street : m.field().validate(function(v){
+            if (v)
+                return null;
+            return "Missing";
+        }),
+        house : m.field().jsonField("HOUSE")
+    });
+    var Person = m.define({
+        address : m.obj(Address)
+    });
+
+    var p = new Person();
+    var errors = p.getErrors();
+    assert.deepEqual(errors.address.childErrors, {street:[{msg:"Missing", code:"default"}]});
+});
+
+
 test('getError should return errors if validator failed', function() {
     var Person = m.define({
         name : m.field().validate(function(v){
@@ -12,9 +52,9 @@ test('getError should return errors if validator failed', function() {
     });
     var p = new Person();
     p.name("a");
-    assert.deepEqual(p.getErrors(), {name : []});
+    assert.deepEqual(p.getErrors(), {});
     p.name(null);
-    assert.deepEqual(p.getErrors(), {        name : [{msg:"Missing", code:"default"}]    });
+    assert.deepEqual(p.getErrors(), { name : [{msg:"Missing", code:"default"}]    });
 });
 
 test('custom errors should vanish when field updated', function() {
@@ -24,9 +64,7 @@ test('custom errors should vanish when field updated', function() {
     var p = new Person();
     p.setError("name","name is invalid");
     p.name("a");
-    assert.deepEqual(p.getErrors(), {
-        name : []
-    });
+    assert.deepEqual(p.getErrors(), {});
 });
 
 test('custom validation should be supported', function() {
