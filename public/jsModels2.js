@@ -8,7 +8,7 @@ var _ = require("underscore");
 
 var GlobalChanges = {};
 var key = 1;
-genKey = function(){ return key++;};
+var genKey = function(){ return key++;};
 
 
 var depth = 0;
@@ -43,20 +43,44 @@ var ModelBase = Observable.extend({
         this.isChanged = {};
         this.errors = {};
         this.__t = 0;
+        this.__version = 0;
     },
 
-    onChange : function(prop, handler){
-        if (arguments.length>=2)
-            this.on("change_" + prop, handler);
-        else
-            this.on("change", arguments[0]);
+    isNested : function(name){
+        var propsMeta = this.propsMeta[name];
+        return propsMeta.itemType!=null ||   propsMeta.entityType!=null;
     },
 
-    onChanged : function(prop, handler){
+    getVersion : function(){
+        return this.__version;
+    },
+
+    onChange : function(prop, handler, context){
         if (arguments.length>=2)
-            this.on("changed_" + prop, handler);
+            this.on("change_" + prop, handler, context);
         else
-            this.on("changed", arguments[0]);
+            this.on("change", arguments[0], context);
+    },
+
+    unChange : function(prop, handler, context){
+        if (arguments.length>=2)
+            this.un("change_" + prop, handler, context);
+        else
+            this.un("change", arguments[0], context);
+    },
+
+    onChanged : function(prop, handler, context){
+        if (typeof(prop)=="string")
+            this.on("changed_" + prop, handler, context);
+        else
+            this.on("changed", arguments[0], arguments[1]);
+    },
+
+    unChanged : function(prop, handler, context){
+        if (arguments.length>=2)
+            this.un("changed_" + prop, handler, context);
+        else
+            this.un("changed", arguments[0], arguments[1]);
     },
 
     begin : function(){
@@ -119,6 +143,33 @@ var EntityBase = ModelBase.extend({
                 result[propMeta.jsonName] = val;
         }
         return result;
+    },
+
+    getError : function(prop, deep){
+        var errors = this.getErrors(prop, deep);
+        var res = errors[prop];
+        if (res){
+            if (res[0])
+                return res[0];
+            if (deep && res.childErrors){
+                var findMsg = function(obj) {
+                    for (var key in obj) {
+                        if (obj[key].length > 0)
+                            return obj[key][0];
+                    }
+                    if (obj.childErrors)
+                        for (var key in obj.childErrors) {
+                            var childErrors = obj[key].childErrors;
+                            if (childErrors)
+                                return findMsg(childErrors);
+                        }
+                }
+                return findMsg(res.childErrors);
+            }
+        }
+
+
+        return null;
     },
 
     getErrors : function(prop, deep){
@@ -315,6 +366,7 @@ var EntityBase = ModelBase.extend({
             this.isChanged[pName] = true;
         }
         this.____changed = true;
+        this.__version++;
     },
 
     __triggerChanged : function(){
@@ -361,11 +413,23 @@ var ListProto = _.extend({}, ModelBase.prototype, {
 
     __itemDirty : function(item){
         this.isDirty[item.__position] = true;
+        if (this.parent)
+            if (this.parent.__markDirty)
+                this.parent.__markDirty(this.__parentField);
     },
 
     get : function(i)
     {
         return this[i];
+    },
+
+    select : function(func){
+        return _.map(this, func);
+    },
+
+    remove : function(item){
+        var pos = _.indexBy(this, item);
+        this.splice(pos, 1);
     },
 
     push : function(item) {
@@ -487,7 +551,9 @@ var ListProto = _.extend({}, ModelBase.prototype, {
     },
 });
 
-
+var messages = {
+    FieldIsRequired : function(){ return "Поле является обязательным для заполнения";}
+}
 
 
 var FieldDefinition = Base.extend({
@@ -498,6 +564,14 @@ var FieldDefinition = Base.extend({
         this._dep = [];
         this._mustUpdate = [];
         this._validators = [];
+    },
+
+    required : function(msg){
+        this._validators.push(function(v){
+            if (v===null || v==="" || v===undefined)
+                return msg || messages.FieldIsRequired();
+        });
+        return this;
     },
 
     validate : function(func){
@@ -607,6 +681,8 @@ module.exports = {
                 _.forEach(propsMeta[pName]._dep, function (dep) {
                     if (dep==initial)
                         return;
+                    if (!propsMeta[dep])
+                        throw "field " + dep + " not found";
                     propsMeta[dep]._mustUpdate.push(initial);
                     addDeps(dep);
                 });
